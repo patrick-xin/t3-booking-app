@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-primary-dark text-white;
+  }
+  .form-select {
+    @apply focus:ring-0;
+  }
+}
+
+@layer utilities {
+  .input {
+    @apply appearance-none rounded bg-primary-gray px-4 py-2 ring-0 focus:border focus:border-white/20 focus:outline-none;
+  }
+}

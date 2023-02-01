@@ -1,34 +1,9 @@
 import type { GetServerSidePropsContext } from "next";
-import {
-  getServerSession,
-  type NextAuthOptions,
-  type DefaultSession,
-} from "next-auth";
-import DiscordProvider from "next-auth/providers/discord";
+import { getServerSession, type NextAuthOptions } from "next-auth";
+
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { env } from "../env/server.mjs";
 import { prisma } from "./db";
-
-/**
- * Module augmentation for `next-auth` types
- * Allows us to add custom properties to the `session` object
- * and keep type safety
- * @see https://next-auth.js.org/getting-started/typescript#module-augmentation
- **/
-declare module "next-auth" {
-  interface Session extends DefaultSession {
-    user: {
-      id: string;
-      // ...other properties
-      // role: UserRole;
-    } & DefaultSession["user"];
-  }
-
-  // interface User {
-  //   // ...other properties
-  //   // role: UserRole;
-  // }
-}
+import CredentialsProvider from "next-auth/providers/credentials";
 
 /**
  * Options for NextAuth.js used to configure
@@ -37,20 +12,47 @@ declare module "next-auth" {
  **/
 export const authOptions: NextAuthOptions = {
   callbacks: {
-    session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-        // session.user.role = user.role; <-- put other properties on the session here
+    session({ session, token }) {
+      if (token.sub && session.user) {
+        const role = token.role;
+        session.user.id = token.sub;
+        session.user.role = role;
       }
+
       return session;
+    },
+    async jwt({ token }) {
+      const user = await prisma.user.findFirstOrThrow({
+        where: { id: token.sub },
+      });
+      return { ...token, role: user.role };
     },
   },
   adapter: PrismaAdapter(prisma),
   providers: [
-    DiscordProvider({
-      clientId: env.DISCORD_CLIENT_ID,
-      clientSecret: env.DISCORD_CLIENT_SECRET,
+    CredentialsProvider({
+      // The name to display on the sign in form (e.g. "Sign in with...")
+      name: "Credentials",
+      // `credentials` is used to generate a form on the sign in page.
+      // You can specify which fields should be submitted, by adding keys to the `credentials` object.
+      // e.g. domain, username, password, 2FA token, etc.
+      // You can pass any HTML attribute to the <input> tag through the object.
+      credentials: {
+        email: { label: "Email", type: "email", placeholder: "Email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = credentials?.email;
+
+        try {
+          const user = await prisma.user.findUnique({ where: { email } });
+          return user;
+        } catch (error) {
+          return null;
+        }
+      },
     }),
+
     /**
      * ...add more providers here
      *
